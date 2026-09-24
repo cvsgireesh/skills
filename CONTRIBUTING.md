@@ -255,6 +255,39 @@ skill in the catalog. The file is the audit trail, so each suppression must be j
 Rules are not pinned to a specific version of your skill: they keep applying after the
 surrounding text is reworded.
 
+### The quality and code-integrity scan
+
+Every skill is also validated by [NVIDIA SkillEvaluator](https://github.com/NVIDIA/SkillEvaluator)
+Tier 1: frontmatter against the agentskills.io schema (including no XML tags in
+`description`), strict SemVer for `metadata.version` when you set one, PII, licence,
+Bandit and Semgrep over shipped scripts, Gitleaks for secrets, Unicode smuggling, and a
+0–100 quality score that fails below 70. Its `security` check is left out: that check is
+SkillSpector again, without this repository's baseline, and the scan above already covers
+it. Keyless, like the SkillSpector scan:
+
+```bash
+commit=$(sed -n 's/.*SKILLEVALUATOR_COMMIT: \([0-9a-f]\{40\}\).*/\1/p' \
+  .github/workflows/skillevaluator.yml | head -1)
+uv tool install --python 3.13 \
+  "skillevaluator[security,tier3] @ git+https://github.com/NVIDIA/SkillEvaluator.git@${commit}" \
+  --with semgrep==1.178.0
+# plus the gitleaks binary on PATH (brew install gitleaks); without it the scan is incomplete
+skillevaluator validate skills/your-skill-name --external \
+  --policy .skillevaluator-policy.yaml \
+  --checks schema,version,pii,license,code-integrity,unicode,quality,lint \
+  --no-dedup -c -r cli,json -o reports/your-skill-name
+uv run .github/scripts/skillevaluator_gate.py \
+  --report-dir reports/your-skill-name --skill your-skill-name
+skillevaluator tier3 validate skills/your-skill-name --strict   # only if you wrote evals/
+```
+
+A HIGH or CRITICAL finding fails, and so does a scanner that could not finish. MEDIUM and
+LOW are reported for you to read. The same rule as for SkillSpector applies: if the finding
+is real, fix it; if it is not, add an entry to
+[`.skillevaluator-baseline.yaml`](.skillevaluator-baseline.yaml) with a `POLICY:` or
+`TRACKED:` reason and your skill under `skills:`. An entry that stops matching fails too,
+so the one that accepted a finding leaves in the pull request that fixes it.
+
 ## 5. If you are writing a new skill, add a Harbor task
 
 One task under [`evaluation/harbor/tasks/`](evaluation/harbor/tasks): a `task.toml` naming
@@ -317,6 +350,9 @@ Blocking, keyless, and runnable on a fork:
 - SkillSpector scores the skill within the threshold its origin is held to — 20 for a skill
   written here, 50 for an imported body — with suppressions and their reasons in
   `.skillspector-baseline.yaml`
+- SkillEvaluator Tier 1 reports no HIGH or CRITICAL finding and no incomplete scanner
+  beyond those accepted in `.skillevaluator-baseline.yaml`, the quality score is at least
+  70, and every `evals/evals.json` is a dataset SkillEvaluator's Tier 3 can run
 - for a new skill: its Harbor task is solvable, oracle reward 1.0
 - no Harbor task's instruction gives away more than 5 points of its own skill's answer —
   a point per API symbol the skill teaches, three per line of code copyable straight out
@@ -331,8 +367,9 @@ Blocking, keyless, and runnable on a fork:
   5xx or rate limiting only warns, so an outage elsewhere cannot hold up a pull request
 
 Reported but not blocking: the coverage gaps between what a suite claims and what it
-implements, a dead link in a body this repository copied rather than wrote, and a
-SkillSpector HIGH/CRITICAL finding in a skill whose score is still within its threshold.
+implements, a dead link in a body this repository copied rather than wrote, a
+SkillSpector HIGH/CRITICAL finding in a skill whose score is still within its threshold,
+and SkillEvaluator's MEDIUM/LOW findings and advisory script lint.
 
 ## Evaluation levels
 
@@ -356,6 +393,13 @@ has not shown it does anything. Level 3 asks whether an agent opens the skill wh
 names it. Both need an inference credential no fork can hold, so both are run by maintainers
 by hand with the results attached to the pull request, and neither is asked of a
 contributor.
+
+For a skill that ships `evals/evals.json`, a maintainer can also dispatch
+[`skillevaluator-live.yml`](.github/workflows/skillevaluator-live.yml): SkillEvaluator's
+Tier 3 runs each case with and without the skill under a real agent harness and reports
+Skill Lift per dimension. It is a second source of Level 2 evidence — prompts graded by a
+judge, beside Harbor tasks graded by a verifier — and, like Level 2, it informs a
+promotion rather than blocking a merge.
 
 Why these two and not a question set — and how prose deliverables are scored inside the same
 differential — is in [MAINTAINERS.md](MAINTAINERS.md).
