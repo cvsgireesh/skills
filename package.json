@@ -12,7 +12,8 @@
   "bugs": "https://github.com/intel/skills/issues",
   "type": "module",
   "bin": {
-    "intel-skills": "bin/intel-skills.mjs"
+    "intel-skills": "bin/intel-skills.mjs",
+    "intel-skills-benefit": "bin/intel-skills-benefit.mjs"
   },
   "files": [
     "bin/",
@@ -20,6 +21,7 @@
     "!skills/**/evals/**",
     "!skills/**/perf/**",
     "skills.yaml",
+    "docs/local-benefit.md",
     "README.md",
     "LICENSE",
     "NOTICE"
@@ -27,5 +29,8 @@
   "engines": {
     "node": ">=20"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "scripts": {
+    "test:benefit": "node --test tests/benefit-*.test.mjs"
+  }
 }
